@@ -1,8 +1,3 @@
-# Ignore service directories that are not part of the main application
-mcp-mattermost
-webui-dev
-webui-marketplace
-
 # Ignore common files and directories
 .git
 .gitignore
@@ -12,3 +7,8 @@ node_modules
 .vscode
 .idea
 *.log
+
+# Project specific
+.env*
+secrets/
+scripts/
