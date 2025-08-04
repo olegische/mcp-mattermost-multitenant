@@ -41,7 +41,7 @@ def run_server() -> None:
     from .server import mcp_app, server_config
 
     logger = logging.getLogger(__name__)
-    logger.info(f"--- {server_config.MATTERMOST_BRAND} MCP Marketplace Server ---")
+    logger.info(f"--- Mattermost MCP Server ---")
     logger.info("Starting server with transport: %s", server_config.MCP_TRANSPORT)
     if server_config.MCP_TRANSPORT != "stdio":
         logger.info(
