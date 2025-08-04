@@ -1,0 +1,11 @@
+services:
+  mcp-mattermost:
+    image: ghcr.io/${MCP_REGISTRY_ID}/${MCP_PROJECT_NAME}:${MCP_VERSION}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+      tags:
+        - ghcr.io/${MCP_REGISTRY_ID}/${MCP_PROJECT_NAME}:${MCP_VERSION}
+        - ghcr.io/${MCP_REGISTRY_ID}/${MCP_PROJECT_NAME}:latest

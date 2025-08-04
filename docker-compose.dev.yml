@@ -1,0 +1,12 @@
+services:
+  mcp-mattermost:
+    image: ghcr.io/${MCP_REGISTRY_ID}/${MCP_PROJECT_NAME}:${MCP_VERSION}
+    container_name: ${MCP_PROJECT_NAME}
+    platform: linux/amd64
+    ports:
+      - "${MCP_PORT:-8660}:${MCP_PORT:-8660}"
+    env_file:
+      - ./.env
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/.${MCP_PROJECT_NAME}:/home/app/.${MCP_PROJECT_NAME}

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-mattermost"
+version = "0.1.0"
+description = "An MCP server that provides tools to interact with the Mattermost API."
+requires-python = ">=3.11"
+authors = [
+    {name = "Oleg Math", email = "dimatroso@gmail.com"}
+]
+dependencies = [
+    "mcp>=1.9.4",
+    "pydantic>=2.5.2,<3.0.0",
+    "pydantic-settings>=2.1.0,<3.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.28.1",
+    "fastapi>=0.115.14"
+]
+
+[project.scripts]
+start = "main:run_server"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

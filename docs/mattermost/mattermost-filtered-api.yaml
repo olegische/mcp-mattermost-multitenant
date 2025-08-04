@@ -1,0 +1,1157 @@
+openapi: 3.0.0
+info:
+  description: "The Mattermost Web Services API enables Mattermost clients and third-party\
+    \ applications to interact with Mattermost servers.\n\n[Official JavaScript and\
+    \ Golang drivers](#/#official-drivers) are available to simplify API integration.\n\
+    \nBy using this API, you agree to our [terms of service](https://about.mattermost.com/default-terms/).\n\
+    \n[Find out more about Mattermost](https://about.mattermost.com/)\n## Contents\n\
+    ### Core Concepts\n* [Schema & Conventions](#/#schema--conventions)\n* [Authentication](#/#authentication)\n\
+    * [Rate Limiting](#/#rate-limiting)\n* [Error Handling](#/#error-handling)\n*\
+    \ [WebSocket](#/#websocket)\n\n  * [Authentication](#/#authentication-1)\n\n \
+    \ * [Websocket Events](#/#websocket-events)\n\n  * [Websocket API](#/#websocket-api)\n\
+    \n### Drivers\n* [Official Drivers](#/#official-drivers)\n* [Community-built Drivers](#/#community-built-drivers)\n\
+    ### Community\n* [Support](#/#support)\n* [Contributing](#/#contributing)\n\n\
+    ## Schema & Conventions\n- All API access is through HTTP(S) requests at `your-mattermost-url/api/v4`.\n\
+    - All request and response bodies are `application/json`.\n- When using endpoints\
+    \ that require a user id, the string `me` can be used in place of the user id\
+    \ to indicate the action is to be taken for the logged in user.\n- For all endpoints\
+    \ that implement pagination via the `per_page` parameter:\n\n  - Maximum items\
+    \ per page: 200 (requests exceeding this will be silently truncated)\n\n  - Default\
+    \ value if a paged API requires a `per_page` parameter and it is not provided:\
+    \ 60\n\n## Authentication\n\n  There are multiple ways to authenticate against\
+    \ the Mattermost API.\n\n  All examples assume there is a Mattermost instance\
+    \ running at http://localhost:8065.\n\n  ### Session Token\n\n  Make an HTTP POST\
+    \ to `your-mattermost-url/api/v4/users/login` with a JSON\n  body indicating the\
+    \ user's `login_id`, `password` and optionally the MFA\n  `token`. The `login_id`\
+    \ can be an email, username or an AD/LDAP ID\n  depending on the system's configuration.\n\
+    \n  ```bash\n  curl -i -d '{\"login_id\":\"someone@nowhere.com\",\"password\"\
+    :\"thisisabadpassword\"}' http://localhost:8065/api/v4/users/login\n  ```\n\n\
+    \  NOTE: If you're running cURL on windows, you will have to change the single\
+    \ quotes to double quotes, and escape the inner double quotes with backslash,\
+    \ like below:\n\n\n  ```bash\n  curl -i -d \"{\\\"login_id\\\":\\\"someone@nowhere.com\\\
+    \",\\\"password\\\":\\\"thisisabadpassword\\\"}\" http://localhost:8065/api/v4/users/login\n\
+    \  ```\n\n  If successful, the response will contain a `Token` header and a user\
+    \ object in the body.\n\n  ```http\n  HTTP/1.1 200 OK\n  Content-Type: application/json\n\
+    \  Permissions-Policy:\n  Referrer-Policy: no-referrer\n  Token: ckh3t4knu3fzujt76o57f5jo4w\n\
+    \  Vary: Origin\n  Vary: Accept-Encoding\n  X-Content-Type-Options: nosniff\n\
+    \  X-Request-Id: bk3uzm335jr9tnoh4mcsybmmjr\n  X-Version-Id: 10.6.0.13685270376.215f100adf6ccda09afcaaa84ac4bfbd.true\n\
+    \  Date: Fri, 28 Mar 2025 09:33:22 GMT\n  Content-Length: 796\n\n  {{user object\
+    \ as json}}\n  ```\n\n  Include the `Token` as part of the `Authorization` header\
+    \ on your future API requests with the `Bearer` method.\n\n  ```bash\n  curl -i\
+    \ -H 'Authorization: Bearer ckh3t4knu3fzujt76o57f5jo4w' http://localhost:8065/api/v4/users/me\n\
+    \  ```\n  Alternatively, include the `Token` as your `MMAUTHTOKEN` cookie value\
+    \ on you future API requests:\n\n  ```bash\n  curl -i -H 'Cookie: MMAUTHTOKEN=ckh3t4knu3fzujt76o57f5jo4w'\
+    \ http://localhost:8065/api/v4/users/me\n  ```\n\n\n  You should now be able to\
+    \ access the API as the user you logged in as.\n\n\n  ### Personal Access Tokens\n\
+    \n  Using [personal access tokens](https://developers.mattermost.com/integrate/reference/personal-access-token/)\
+    \ is very similar to using a session token. The only real difference is that session\
+    \ tokens will expire, while personal access tokens will live until they are manually\
+    \ revoked by the user or an admin.\n\n  Just like session tokens, include the\
+    \ personal access token as part of the `Authorization` header in your requests\
+    \ using the `Bearer` method. Assuming our personal access token is `9xuqwrwgstrb3mzrxb83nb357a`,\
+    \ we could use it as shown below.\n\n  ```bash\n  curl -i -H 'Authorization: Bearer\
+    \ 9xuqwrwgstrb3mzrxb83nb357a' http://localhost:8065/api/v4/users/me\n  ```\n\n\
+    ## Rate Limiting\n  Whenever you make an HTTP request to the Mattermost API you\
+    \ might notice\n  the following headers included in the response:\n\n  ```http\n\
+    \  X-Ratelimit-Limit: 10\n  X-Ratelimit-Remaining: 9\n  X-Ratelimit-Reset: 1441983590\n\
+    \  ```\n\n\n  These headers are telling you your current rate limit status.\n\n\
+    \n  | Header                  | Description                                  \
+    \                      |\n  |:-----------------------|:-------------------------------------------------------------------|\n\
+    \  | X-Ratelimit-Limit      | The maximum number of requests you can make per\
+    \ second.            |\n  | X-Ratelimit-Remaining  | The number of requests remaining\
+    \ in the current window.            |\n  | X-Ratelimit-Reset      | The remaining\
+    \ UTC epoch seconds before the rate limit resets.      |\n\n  If you exceed your\
+    \ rate limit for a window you will receive the following error in the body of\
+    \ the response:\n\n  ```http\n  HTTP/1.1 429 Too Many Requests\n  Date: Tue, 10\
+    \ Sep 2015 11:20:28 GMT\n  X-RateLimit-Limit: 10\n  X-RateLimit-Remaining: 0\n\
+    \  X-RateLimit-Reset: 1\n\n  limit exceeded\n  ```\n\n## Error Handling\n\n  All\
+    \ errors will return an appropriate HTTP response code along with the\n  following\
+    \ JSON body:\n\n  ```json\n  {\n      \"id\": \"the.error.id\",\n      \"message\"\
+    : \"Something went wrong\", // the reason for the error\n      \"request_id\"\
+    : \"\", // the ID of the request\n      \"status_code\": 0, // the HTTP status\
+    \ code\n      \"is_oauth\": false // whether the error is OAuth specific\n  }\n\
+    \n  ```\n\n## WebSocket\n In addition to the HTTP RESTful web service, Mattermost\
+    \ also offers a WebSocket event delivery system and some API functionality.\n\n\
+    \ To connect to the WebSocket follow the standard opening handshake as [defined\
+    \ by the RFC specification](https://tools.ietf.org/html/rfc6455#section-1.3) to\
+    \ the `/api/v4/websocket` endpoint of Mattermost.\n\n\n### Authentication\n\n\
+    \  The Mattermost WebSocket can be authenticated using [the standard API authentication\
+    \ methods](/#/#authentication) (by a cookie or with an explicit Authorization\
+    \ header) or through an authentication challenge. If you're authenticating from\
+    \ a browser and have logged in with the Mattermost API, your authentication cookie\
+    \ should already be set. This is how the Mattermost webapp authenticates with\
+    \ the WebSocket.\n\n  To authenticate with an authentication challenge, first\
+    \ connect the WebSocket and then send the following JSON over the connection:\n\
+    \n\n  ```json\n  {\n    \"seq\": 1,\n    \"action\": \"authentication_challenge\"\
+    ,\n    \"data\": {\n      \"token\": \"mattermosttokengoeshere\"\n    }\n  }\n\
+    \  ```\n\n  If successful, you will receive a standard OK response over the WebSocket\
+    \ connection:\n\n\n  ```json\n  {\n    \"status\": \"OK\",\n    \"seq_reply\"\
+    : 1\n  }\n  ```\n\n  Once successfully authenticated, the server will pass a `hello`\
+    \ WebSocket event containing server version over the connection.\n\n### Websocket\
+    \ Events\n\n  WebSocket events are primarily used to alert the client to changes\
+    \ in Mattermost, such as delivering new posts or alerting the client that another\
+    \ user is typing in a channel.\n\n  Events on the WebSocket will have the form:\n\
+    \n  ```json\n  {\n    \"event\": \"hello\",\n    \"data\": {\n      \"server_version\"\
+    : \"3.6.0.1451.1c38da627ebb4e3635677db6939e9195\"\n    },\n    \"broadcast\":{\n\
+    \      \"omit_users\": null,\n      \"user_id\": \"ay5sq51sebfh58ktrce5ijtcwy\"\
+    ,\n      \"channel_id\": \"\",\n      \"team_id\": \"\"\n    },\n    \"seq\":\
+    \ 0\n  }\n  ```\n\n  The `event` field indicates the event type, `data` contains\
+    \ any data relevant to the event and `broadcast` contains information about who\
+    \ the event was sent to. For example, the above example has `user_id` set to \"\
+    ay5sq51sebfh58ktrce5ijtcwy\" meaning that only the user with that ID received\
+    \ this event broadcast. The `omit_users` field can contain an array of user IDs\
+    \ that were specifically omitted from receiving the event.\n\n  The list of Mattermost\
+    \ WebSocket events are:\n\n  - added_to_team\n  - authentication_challenge\n \
+    \ - channel_converted\n  - channel_created\n  - channel_deleted\n  - channel_member_updated\n\
+    \  - channel_updated\n  - channel_viewed\n  - config_changed\n  - delete_team\n\
+    \  - direct_added\n  - emoji_added\n  - ephemeral_message\n  - group_added\n \
+    \ - hello\n  - leave_team\n  - license_changed\n  - memberrole_updated\n  - new_user\n\
+    \  - plugin_disabled\n  - plugin_enabled\n  - plugin_statuses_changed\n  - post_deleted\n\
+    \  - post_edited\n  - post_unread\n  - posted\n  - preference_changed\n  - preferences_changed\n\
+    \  - preferences_deleted\n  - reaction_added\n  - reaction_removed\n  - response\n\
+    \  - role_updated\n  - status_change\n  - typing\n  - update_team\n  - user_added\n\
+    \  - user_removed\n  - user_role_updated\n  - user_updated\n  - dialog_opened\n\
+    \  - thread_updated\n  - thread_follow_changed\n  - thread_read_changed\n\n###\
+    \ Websocket API\n\n  Mattermost has some basic support for WebSocket APIs. A connected\
+    \ WebSocket can make requests by sending the following over the connection:\n\n\
+    \  ```json\n  {\n    \"action\": \"user_typing\",\n    \"seq\": 2,\n    \"data\"\
+    : {\n      \"channel_id\": \"nhze199c4j87ped4wannrjdt9c\",\n      \"parent_id\"\
+    : \"\"\n    }\n  }\n  ```\n\n  This is an example of making a `user_typing` request,\
+    \ with the purpose of alerting the server that the connected client has begun\
+    \ typing in a channel or thread. The `action` field indicates what is being requested,\
+    \ and performs a similar duty as the route in a HTTP API. The `data` field is\
+    \ used to add any additional data along with the request. The server supports\
+    \ binary websocket messages as well in case the client has such a requirement.\n\
+    \n  The `seq` or sequence number is set by the client and should be incremented\
+    \ with every use. It is used to distinguish responses to requests that come down\
+    \ the WebSocket. For example, a standard response to the above request would be:\n\
+    \n\n  ```json\n  {\n    \"status\": \"OK\",\n    \"seq_reply\": 2\n  }\n  ```\n\
+    \n  Notice `seq_reply` is 2, matching the `seq` of the original request. Using\
+    \ this a client can distinguish which request the response is meant for.\n\n \
+    \ If there was any information to respond with, it would be encapsulated in a\
+    \ `data` field.\n\n  In the case of an error, the response would be:\n\n\n  ```json\n\
+    \  {\n    \"status\": \"FAIL\",\n    \"seq_reply\": 2,\n    \"error\": {\n   \
+    \   \"id\": \"some.error.id.here\",\n      \"message\": \"Some error message here\"\
+    \n    }\n  }\n  ```\n\n\n  The list of WebSocket API actions is:\n\n  - user_typing\n\
+    \  - get_statuses\n  - get_statuses_by_ids\n\n\n  To see how these actions work,\
+    \ please refer to either the [Golang WebSocket driver](https://github.com/mattermost/mattermost/blob/master/server/public/model/websocket_client.go)\
+    \ or our [JavaScript WebSocket driver](https://github.com/mattermost/mattermost/blob/master/webapp/platform/client/src/websocket.ts).\n\
+    \n## Drivers\n  The easiest way to interact with the Mattermost Web Service API\
+    \ is through\n  a language specific driver.\n\n  ### Official Drivers\n\n  * Mattermost\
+    \ JavaScript/TypeScript Driver\n    * [NPM](https://www.npmjs.com/package/@mattermost/client)\n\
+    \    * [Source](https://github.com/mattermost/mattermost/tree/master/webapp/platform/client)\n\
+    \n  * [Mattermost Golang Driver](https://pkg.go.dev/github.com/mattermost/mattermost/server/public/model#Client4)\n\
+    \n  ### Community-built Drivers\n\n  For community-built drivers and API wrappers,\
+    \ see [our app directory](https://mattermost.com/marketplace-category/mattermost-developers-tools/).\n\
+    \n## Support\nMattermost core committers work with the community to keep the API\
+    \ documentation up-to-date.\nIf you have questions on API routes not listed in\
+    \ this reference, you can:\n- [Join the Mattermost community server](https://community.mattermost.com)\
+    \ to ask questions in the Developers channel\n- Contact us at feedback@mattermost.com\n\
+    \n[Bug reports](https://github.com/mattermost/mattermost/issues) in the documentation\
+    \ or the API are also welcome, as are pull requests to fix the issues.\n\n## Contributing\n\
+    When you have answers to API questions not addressed in our documentation we ask\
+    \ you to consider making a pull request to improve our reference. Small and large\
+    \ changes are all welcome.\n\nWe also have [Help Wanted tickets](https://github.com/mattermost/mattermost/issues?q=is%3Aopen+is%3Aissue+label%3AArea%2FAPI)\
+    \ available for community members who would like to help others more easily use\
+    \ the APIs. We acknowledge everyone's contribution in the [release notes of our\
+    \ next version](https://docs.mattermost.com/administration/changelog.html#contributors).\n\
+    \nThe source code for this API reference is hosted at https://github.com/mattermost/mattermost/tree/master/api.\n"
+  version: 4.0.0
+  title: Mattermost API
+servers:
+- url: '{your-mattermost-url}'
+  variables:
+    your-mattermost-url:
+      default: http://localhost:8065
+paths:
+  /api/v4/users/{user_id}/channels/{channel_id}/unread:
+    get:
+      tags:
+      - channels
+      summary: Get unread messages
+      description: 'Get the total unread messages and mentions for a channel for a
+        user.
+
+        ##### Permissions
+
+        Must be logged in as user and have the `read_channel` permission, or have
+        `edit_other_usrs` permission.
+
+        '
+      operationId: GetChannelUnread
+      parameters:
+      - name: user_id
+        in: path
+        description: User GUID
+        required: true
+        schema:
+          type: string
+      - name: channel_id
+        in: path
+        description: Channel GUID
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Channel unreads retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelUnread'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+      - lang: Go
+        source: "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"log\"\n\t\
+          \"os\"\n\n\t\"github.com/mattermost/mattermost/server/public/model\"\n)\n\
+          \nfunc main() {\n\tclient := model.NewAPIv4Client(os.Getenv(\"MM_SERVICESETTINGS_SITEURL\"\
+          ))\n\tclient.SetToken(os.Getenv(\"MM_AUTHTOKEN\"))\n\n\tchannelId := \"\
+          channel_id\"\n\tuserId := \"user_id\"\n\tchannelUnread, _, err := client.GetChannelUnread(context.Background(),\
+          \ channelId, userId)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tfmt.Printf(\"\
+          Found %d unread messages with %d mentions for user %s in channel %s\\n\"\
+          , channelUnread.MentionCount, channelUnread.MentionCount, userId, channelId)\n\
+          }\n"
+  /api/v4/posts/{post_id}/thread:
+    get:
+      tags:
+      - posts
+      summary: Get a thread
+      description: 'Get a post and the rest of the posts in the same thread.
+
+        ##### Permissions
+
+        Must have `read_channel` permission for the channel the post is in or if the
+        channel is public, have the `read_public_channels` permission for the team.
+
+        '
+      operationId: GetPostThread
+      parameters:
+      - name: post_id
+        in: path
+        description: ID of a post in the thread
+        required: true
+        schema:
+          type: string
+      - name: perPage
+        in: query
+        description: The number of posts per page
+        schema:
+          type: integer
+          default: 0
+      - name: fromPost
+        in: query
+        description: The post_id to return the next page of posts from
+        schema:
+          type: string
+          default: ''
+      - name: fromCreateAt
+        in: query
+        description: The create_at timestamp to return the next page of posts from
+        schema:
+          type: integer
+          default: 0
+      - name: fromUpdateAt
+        in: query
+        description: The update_at timestamp to return the next page of posts from.
+          You cannot set this flag with direction=down.
+        schema:
+          type: integer
+          default: 0
+      - name: direction
+        in: query
+        description: The direction to return the posts. Either up or down.
+        schema:
+          type: string
+          default: ''
+      - name: skipFetchThreads
+        in: query
+        description: Whether to skip fetching threads or not
+        schema:
+          type: boolean
+          default: false
+      - name: collapsedThreads
+        in: query
+        description: Whether the client uses CRT or not
+        schema:
+          type: boolean
+          default: false
+      - name: collapsedThreadsExtended
+        in: query
+        description: Whether to return the associated users as part of the response
+          or not
+        schema:
+          type: boolean
+          default: false
+      - name: updatesOnly
+        in: query
+        description: This flag is used to make the API work with the updateAt value.
+          If you set this flag, you must set a value for fromUpdateAt.
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Post list retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v4/posts:
+    post:
+      tags:
+      - posts
+      summary: Create a post
+      description: 'Create a new post in a channel. To create the post as a comment
+        on another post, provide `root_id`.
+
+        ##### Permissions
+
+        Must have `create_post` permission for the channel the post is being created
+        in.
+
+        '
+      operationId: CreatePost
+      parameters:
+      - name: set_online
+        in: query
+        description: Whether to set the user status as online or not.
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - channel_id
+              - message
+              properties:
+                channel_id:
+                  type: string
+                  description: The channel ID to post in
+                message:
+                  type: string
+                  description: The message contents, can be formatted with Markdown
+                root_id:
+                  type: string
+                  description: The post ID to comment on
+                file_ids:
+                  type: array
+                  description: A list of file IDs to associate with the post. Note
+                    that posts are limited to 5 files maximum. Please use additional
+                    posts for more files.
+                  items:
+                    type: string
+                props:
+                  description: A general JSON property bag to attach to the post
+                  type: object
+                metadata:
+                  description: A JSON object to add post metadata, e.g the post's
+                    priority
+                  type: object
+                  properties:
+                    priority:
+                      type: object
+                      description: An object containing the post's priority properties
+                      properties:
+                        priority:
+                          type: string
+                          description: The priority label of the post, could empty,
+                            important, or urgent
+                        requested_ack:
+                          type: boolean
+                          description: Set to true to request for acknowledgements
+        description: Post object to create
+        required: true
+      responses:
+        '201':
+          description: Post creation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v4/channels/direct:
+    post:
+      tags:
+      - channels
+      summary: Create a direct message channel
+      description: 'Create a new direct message channel between two users.
+
+        ##### Permissions
+
+        Must be one of the two users and have `create_direct_channel` permission.
+        Having the `manage_system` permission voids the previous requirements.
+
+        '
+      operationId: CreateDirectChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+              minItems: 2
+              maxItems: 2
+        description: The two user ids to be in the direct message
+        required: true
+      responses:
+        '201':
+          description: Direct channel creation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+      - lang: Go
+        source: "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"log\"\n\t\
+          \"os\"\n\n\t\"github.com/mattermost/mattermost/server/public/model\"\n)\n\
+          \nfunc main() {\n\tclient := model.NewAPIv4Client(os.Getenv(\"MM_SERVICESETTINGS_SITEURL\"\
+          ))\n\tclient.SetToken(os.Getenv(\"MM_AUTHTOKEN\"))\n\n\tuserID1 := \"user_id_1\"\
+          \n\tuserID2 := \"user_id_2\"\n\tchannel, _, err := client.CreateDirectChannel(context.Background(),\
+          \ userID1, userID2)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tfmt.Printf(\"\
+          Created direct message channel with id %s for users %s and %s\\n\", channel.Id,\
+          \ userID1, userID2)\n}\n"
+  /api/v4/channels/group:
+    post:
+      tags:
+      - channels
+      summary: Create a group message channel
+      description: 'Create a new group message channel to group of users. If the logged
+        in user''s id is not included in the list, it will be appended to the end.
+
+        ##### Permissions
+
+        Must have `create_group_channel` permission.
+
+        '
+      operationId: CreateGroupChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+              minItems: 3
+              maxItems: 8
+        description: User ids to be in the group message channel.
+        required: true
+      responses:
+        '201':
+          description: Group channel creation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+      - lang: Go
+        source: "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"log\"\n\t\
+          \"os\"\n\n\t\"github.com/mattermost/mattermost/server/public/model\"\n)\n\
+          \nfunc main() {\n\tclient := model.NewAPIv4Client(os.Getenv(\"MM_SERVICESETTINGS_SITEURL\"\
+          ))\n\tclient.SetToken(os.Getenv(\"MM_AUTHTOKEN\"))\n\n\tuserIDs := []string{\"\
+          user_id_1\", \"user_id_2\", \"user_id_3\"}\n\tchannel, _, err := client.CreateGroupChannel(context.Background(),\
+          \ userIDs)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tfmt.Printf(\"\
+          Created group message channel with id %s for users %s, %s and %s\\n\", channel.Id,\
+          \ userIDs[0], userIDs[1], userIDs[2])\n}\n"
+  /api/v4/channels:
+    post:
+      tags:
+      - channels
+      summary: Create a channel
+      description: 'Create a new channel.
+
+        ##### Permissions
+
+        If creating a public channel, `create_public_channel` permission is required.
+        If creating a private channel, `create_private_channel` permission is required.
+
+        '
+      operationId: CreateChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - display_name
+              - type
+              - team_id
+              properties:
+                team_id:
+                  type: string
+                  description: The team ID of the team to create the channel on
+                name:
+                  type: string
+                  description: The unique handle for the channel, will be present
+                    in the channel URL
+                display_name:
+                  type: string
+                  description: The non-unique UI name for the channel
+                purpose:
+                  type: string
+                  description: A short description of the purpose of the channel
+                header:
+                  type: string
+                  description: Markdown-formatted text to display in the header of
+                    the channel
+                type:
+                  type: string
+                  description: '''O'' for a public channel, ''P'' for a private channel'
+        description: Channel object to be created
+        required: true
+      responses:
+        '201':
+          description: Channel creation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+      - lang: Go
+        source: "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"log\"\n\t\
+          \"os\"\n\n\t\"github.com/mattermost/mattermost/server/public/model\"\n)\n\
+          \nfunc main() {\n\tclient := model.NewAPIv4Client(os.Getenv(\"MM_SERVICESETTINGS_SITEURL\"\
+          ))\n\tclient.SetToken(os.Getenv(\"MM_AUTHTOKEN\"))\n\n\tchannel, _, err\
+          \ := client.CreateChannel(context.Background(), &model.Channel{\n\t\tName:\
+          \        \"channel_name\",\n\t\tDisplayName: \"Channel Name\",\n\t\tType:\
+          \        model.ChannelTypeOpen,\n\t\tTeamId:      \"team_id\",\n\t})\n\t\
+          if err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tfmt.Printf(\"Created channel\
+          \ with id %s\\n\", channel.Id)\n}\n"
+  /api/v4/teams/{team_id}/channels/search:
+    post:
+      tags:
+      - channels
+      summary: Search channels
+      description: 'Search public channels on a team based on the search term provided
+        in the request body.
+
+        ##### Permissions
+
+        Must have the `list_team_channels` permission.
+
+
+        In server version 5.16 and later, a user without the `list_team_channels`
+        permission will be able to use this endpoint, with the search results limited
+        to the channels that the user is a member of.
+
+        '
+      operationId: SearchChannels
+      parameters:
+      - name: team_id
+        in: path
+        description: Team GUID
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - term
+              properties:
+                term:
+                  description: The search term to match against the name or display
+                    name of channels
+                  type: string
+        description: Search criteria
+        required: true
+      responses:
+        '201':
+          description: Channels search successful
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+      - lang: Go
+        source: "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"log\"\n\t\
+          \"os\"\n\n\t\"github.com/mattermost/mattermost/server/public/model\"\n)\n\
+          \nfunc main() {\n\tclient := model.NewAPIv4Client(os.Getenv(\"MM_SERVICESETTINGS_SITEURL\"\
+          ))\n\tclient.SetToken(os.Getenv(\"MM_AUTHTOKEN\"))\n\n\tteamId := \"team_id\"\
+          \n\tsearchTerm := \"search\"\n\tchannels, _, err := client.SearchChannels(context.Background(),\
+          \ teamId, &model.ChannelSearch{\n\t\tTerm: searchTerm,\n\t})\n\tif err !=\
+          \ nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tfmt.Printf(\"Found %d channels on\
+          \ team %s matching term '%s'\\n\", len(channels), teamId, searchTerm)\n\
+          }\n"
+  /api/v4/teams/{team_id}/posts/search:
+    post:
+      tags:
+      - posts
+      summary: Search for team posts
+      description: 'Search posts in the team and from the provided terms string.
+
+        ##### Permissions
+
+        Must be authenticated and have the `view_team` permission.
+
+        '
+      operationId: SearchPosts
+      parameters:
+      - name: team_id
+        in: path
+        description: Team GUID
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - terms
+              - is_or_search
+              properties:
+                terms:
+                  type: string
+                  description: The search terms as inputed by the user. To search
+                    for posts from a user include `from:someusername`, using a user's
+                    username. To search in a specific channel include `in:somechannel`,
+                    using the channel name (not the display name).
+                is_or_search:
+                  type: boolean
+                  description: Set to true if an Or search should be performed vs
+                    an And search.
+                time_zone_offset:
+                  type: integer
+                  default: 0
+                  description: Offset from UTC of user timezone for date searches.
+                include_deleted_channels:
+                  type: boolean
+                  description: Set to true if deleted channels should be included
+                    in the search. (archived channels)
+                page:
+                  type: integer
+                  default: 0
+                  description: The page to select. (Only works with Elasticsearch)
+                per_page:
+                  type: integer
+                  default: 60
+                  description: The number of posts per page. (Only works with Elasticsearch)
+        description: The search terms and logic to use in the search.
+        required: true
+      responses:
+        '200':
+          description: Post list retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListWithSearchMatches'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v4/channels/{channel_id}/posts:
+    get:
+      tags:
+      - posts
+      summary: Get posts for a channel
+      description: 'Get a page of posts in a channel. Use the query parameters to
+        modify the behaviour of this endpoint. The parameter `since` must not be used
+        with any of `before`, `after`, `page`, and `per_page` parameters.
+
+        If `since` is used, it will always return all posts modified since that time,
+        ordered by their create time limited till 1000. A caveat with this parameter
+        is that there is no guarantee that the returned posts will be consecutive.
+        It is left to the clients to maintain state and fill any missing holes in
+        the post order.
+
+        ##### Permissions
+
+        Must have `read_channel` permission for the channel.
+
+        '
+      operationId: GetPostsForChannel
+      parameters:
+      - name: channel_id
+        in: path
+        description: The channel ID to get the posts for
+        required: true
+        schema:
+          type: string
+      - name: page
+        in: query
+        description: The page to select
+        schema:
+          type: integer
+          default: 0
+      - name: per_page
+        in: query
+        description: The number of posts per page
+        schema:
+          type: integer
+          default: 60
+      - name: since
+        in: query
+        description: Provide a non-zero value in Unix time milliseconds to select
+          posts modified after that time
+        schema:
+          type: integer
+      - name: before
+        in: query
+        description: A post id to select the posts that came before this one
+        schema:
+          type: string
+      - name: after
+        in: query
+        description: A post id to select the posts that came after this one
+        schema:
+          type: string
+      - name: include_deleted
+        in: query
+        description: Whether to include deleted posts or not. Must have system admin
+          permissions.
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Post list retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  schemas:
+    ChannelUnread:
+      type: object
+      properties:
+        team_id:
+          type: string
+        channel_id:
+          type: string
+        msg_count:
+          type: integer
+        mention_count:
+          type: integer
+    AppError:
+      type: object
+      properties:
+        status_code:
+          type: integer
+        id:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+    PostList:
+      type: object
+      properties:
+        order:
+          type: array
+          items:
+            type: string
+          example:
+          - post_id1
+          - post_id12
+        posts:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Post'
+        next_post_id:
+          type: string
+          description: The ID of next post. Not omitted when empty or not relevant.
+        prev_post_id:
+          type: string
+          description: The ID of previous post. Not omitted when empty or not relevant.
+        has_next:
+          type: boolean
+          description: Whether there are more items after this page.
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+        create_at:
+          description: The time in milliseconds a post was created
+          type: integer
+          format: int64
+        update_at:
+          description: The time in milliseconds a post was last updated
+          type: integer
+          format: int64
+        delete_at:
+          description: The time in milliseconds a post was deleted
+          type: integer
+          format: int64
+        edit_at:
+          type: integer
+          format: int64
+        user_id:
+          type: string
+        channel_id:
+          type: string
+        root_id:
+          type: string
+        original_id:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+        props:
+          type: object
+        hashtag:
+          type: string
+        file_ids:
+          type: array
+          items:
+            type: string
+        pending_post_id:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/PostMetadata'
+    PostMetadata:
+      type: object
+      description: Additional information used to display a post.
+      properties:
+        embeds:
+          type: array
+          description: 'Information about content embedded in the post including OpenGraph
+            previews, image link previews, and message attachments. This field will
+            be null if the post does not contain embedded content.
+
+            '
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                description: The type of content that is embedded in this point.
+                enum:
+                - image
+                - message_attachment
+                - opengraph
+                - link
+              url:
+                type: string
+                description: The URL of the embedded content, if one exists.
+              data:
+                type: object
+                description: 'Any additional information about the embedded content.
+                  Only used at this time to store OpenGraph metadata.
+
+                  This field will be null for non-OpenGraph embeds.
+
+                  '
+        emojis:
+          type: array
+          description: 'The custom emojis that appear in this point or have been used
+            in reactions to this post. This field will be null if the post does not
+            contain custom emojis.
+
+            '
+          items:
+            $ref: '#/components/schemas/Emoji'
+        files:
+          type: array
+          description: 'The FileInfo objects for any files attached to the post. This
+            field will be null if the post does not have any file attachments.
+
+            '
+          items:
+            $ref: '#/components/schemas/FileInfo'
+        images:
+          type: object
+          description: 'An object mapping the URL of an external image to an object
+            containing the dimensions of that image. This field will be null if the
+            post or its embedded content does not reference any external images.
+
+            '
+          items:
+            type: object
+            properties:
+              height:
+                type: integer
+              width:
+                type: integer
+        reactions:
+          type: array
+          description: 'Any reactions made to this point. This field will be null
+            if no reactions have been made to this post.
+
+            '
+          items:
+            $ref: '#/components/schemas/Reaction'
+        priority:
+          type: object
+          description: 'Post priority set for this post. This field will be null if
+            no priority metadata has been set.
+
+            '
+          properties:
+            priority:
+              type: string
+              description: The priority label of a post, could be either empty, important,
+                or urgent.
+            requested_ack:
+              type: boolean
+              description: Whether the post author has requested for acknowledgements
+                or not.
+        acknowledgements:
+          type: array
+          description: 'Any acknowledgements made to this point.
+
+            '
+          items:
+            $ref: '#/components/schemas/PostAcknowledgement'
+    Emoji:
+      type: object
+      properties:
+        id:
+          description: The ID of the emoji
+          type: string
+        creator_id:
+          description: The ID of the user that made the emoji
+          type: string
+        name:
+          description: The name of the emoji
+          type: string
+        create_at:
+          description: The time in milliseconds the emoji was made
+          type: integer
+          format: int64
+        update_at:
+          description: The time in milliseconds the emoji was last updated
+          type: integer
+          format: int64
+        delete_at:
+          description: The time in milliseconds the emoji was deleted
+          type: integer
+          format: int64
+    FileInfo:
+      type: object
+      properties:
+        id:
+          description: The unique identifier for this file
+          type: string
+        user_id:
+          description: The ID of the user that uploaded this file
+          type: string
+        post_id:
+          description: If this file is attached to a post, the ID of that post
+          type: string
+        create_at:
+          description: The time in milliseconds a file was created
+          type: integer
+          format: int64
+        update_at:
+          description: The time in milliseconds a file was last updated
+          type: integer
+          format: int64
+        delete_at:
+          description: The time in milliseconds a file was deleted
+          type: integer
+          format: int64
+        name:
+          description: The name of the file
+          type: string
+        extension:
+          description: The extension at the end of the file name
+          type: string
+        size:
+          description: The size of the file in bytes
+          type: integer
+        mime_type:
+          description: The MIME type of the file
+          type: string
+        width:
+          description: If this file is an image, the width of the file
+          type: integer
+        height:
+          description: If this file is an image, the height of the file
+          type: integer
+        has_preview_image:
+          description: If this file is an image, whether or not it has a preview-sized
+            version
+          type: boolean
+    Reaction:
+      type: object
+      properties:
+        user_id:
+          description: The ID of the user that made this reaction
+          type: string
+        post_id:
+          description: The ID of the post to which this reaction was made
+          type: string
+        emoji_name:
+          description: The name of the emoji that was used for this reaction
+          type: string
+        create_at:
+          description: The time in milliseconds this reaction was made
+          type: integer
+          format: int64
+    PostAcknowledgement:
+      type: object
+      properties:
+        user_id:
+          description: The ID of the user that made this acknowledgement.
+          type: string
+        post_id:
+          description: The ID of the post to which this acknowledgement was made.
+          type: string
+        acknowledged_at:
+          description: The time in milliseconds in which this acknowledgement was
+            made.
+          type: integer
+          format: int64
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+        create_at:
+          description: The time in milliseconds a channel was created
+          type: integer
+          format: int64
+        update_at:
+          description: The time in milliseconds a channel was last updated
+          type: integer
+          format: int64
+        delete_at:
+          description: The time in milliseconds a channel was deleted
+          type: integer
+          format: int64
+        team_id:
+          type: string
+        type:
+          type: string
+        display_name:
+          type: string
+        name:
+          type: string
+        header:
+          type: string
+        purpose:
+          type: string
+        last_post_at:
+          description: The time in milliseconds of the last post of a channel
+          type: integer
+          format: int64
+        total_msg_count:
+          type: integer
+        extra_update_at:
+          description: Deprecated in Mattermost 5.0 release
+          type: integer
+          format: int64
+        creator_id:
+          type: string
+    PostListWithSearchMatches:
+      type: object
+      properties:
+        order:
+          type: array
+          items:
+            type: string
+          example:
+          - post_id1
+          - post_id12
+        posts:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Post'
+        matches:
+          description: A mapping of post IDs to a list of matched terms within the
+            post. This field will only be populated on servers running version 5.1
+            or greater with Elasticsearch enabled.
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            post_id1:
+            - search match 1
+            - search match 2
+  responses:
+    BadRequest:
+      description: Invalid or missing parameters in URL or request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+    Unauthorized:
+      description: No access token provided
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+    Forbidden:
+      description: Do not have appropriate permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    BearerAuth:
+      type: http
+      scheme: bearer
