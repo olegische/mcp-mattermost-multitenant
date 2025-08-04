@@ -74,7 +74,7 @@ def get_service_config(context: Context) -> ServiceConfig:
 
 
 @asynccontextmanager
-async def get_marketplace_client(
+async def get_mattermost_client(
     config: ServiceConfig,
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
     """

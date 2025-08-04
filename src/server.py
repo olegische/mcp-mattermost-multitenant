@@ -5,7 +5,7 @@ Mattermost API.
 """
 
 import logging
-from typing import Any
+from typing import Any, List, Optional
 
 import httpx
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,10 +14,9 @@ from starlette.middleware import Middleware
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from .prompts import get_prompts
 from .utils.dependencies import (
     ServiceConfig,
-    get_marketplace_client,
+    get_mattermost_client,
     get_service_config,
 )
 
@@ -95,242 +94,413 @@ async def handle_api_error(response: httpx.Response) -> None:
 
 
 @mcp_app.tool()
-async def get_marketplace(context: Context) -> list[dict[str, Any]]:
-    """Retrieve a list of all available MCP servers from the marketplace.
+async def get_channel_unread(
+    context: Context, user_id: str, channel_id: str
+) -> dict[str, Any]:
+    """Get the total unread messages and mentions for a channel for a user.
 
-    This corresponds to the GET /mcp/marketplace endpoint.
+    Corresponds to the GET /api/v4/users/{user_id}/channels/{channel_id}/unread endpoint.
 
     Args:
         context: The MCP request context.
+        user_id: The ID of the user. Can be 'me' for the current user.
+        channel_id: The ID of the channel to check for unread messages.
 
     Returns:
-        A list of MCP marketplace items, where each item is a dictionary
-        with the following structure:
-        - mcpId (str): Unique identifier for the MCP server.
-        - githubUrl (str): The source URL for the server.
-        - name (str): The display name of the server.
-        - author (str): The author of the server.
-        - description (str): A brief description.
-        - codiconIcon (str): The name of a Codicon icon.
-        - logoUrl (str): A URL to the server's logo.
-        - category (str): The category (e.g., "AI", "Databases").
-        - tags (List[str]): A list of associated tags.
-        - requiresApiKey (bool): True if the server needs API keys.
-        - isRecommended (bool): True if the server is recommended.
-        - githubStars (int): Number of GitHub stars.
-        - downloadCount (int): Number of downloads.
-        - createdAt (str): ISO 8601 timestamp of creation.
-        - updatedAt (str): ISO 8601 timestamp of last update.
+        A dictionary containing unread count information with the following structure:
+        - team_id (str): The ID of the team the channel belongs to.
+        - channel_id (str): The ID of the channel.
+        - msg_count (int): The total number of unread messages.
+        - mention_count (int): The number of unread messages that are mentions.
     """
     config = get_service_config(context)
-    logger.info("🔥 GET_MATTERMOST TOOL CALLED! 🔥")
-    logger.info(
-        config.MATTERMOST_BASE_URL,
-    )
-
-    async with get_marketplace_client(config) as client:
+    async with get_mattermost_client(config) as client:
         try:
-            response = await client.get("/api/v1/mcp/marketplace")
+            response = await client.get(
+                f"/api/v4/users/{user_id}/channels/{channel_id}/unread"
+            )
             if response.status_code != 200:
                 await handle_api_error(response)
             return response.json()
         except httpx.RequestError as e:
-            logger.error(f"Request to marketplace API failed: {e}")
-            raise ValueError(f"Failed to connect to the marketplace API: {e}")
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
 
 
 @mcp_app.tool()
-async def get_setup(context: Context, mcp_id: str) -> dict[str, Any]:
-    """Retrieve the detailed setup information for a specific MCP server.
+async def get_post_thread(
+    context: Context,
+    post_id: str,
+    perPage: int = 0,
+    fromPost: str = "",
+    fromCreateAt: int = 0,
+    fromUpdateAt: int = 0,
+    direction: str = "",
+    skipFetchThreads: bool = False,
+    collapsedThreads: bool = False,
+    collapsedThreadsExtended: bool = False,
+    updatesOnly: bool = False,
+) -> dict[str, Any]:
+    """Get a post and the rest of the posts in the same thread.
 
-    This corresponds to the POST /mcp/setup endpoint.
+    Corresponds to the GET /api/v4/posts/{post_id}/thread endpoint.
 
     Args:
         context: The MCP request context.
-        mcp_id: The unique identifier for the MCP server.
+        post_id: ID of a post in the thread.
+        perPage: The number of posts per page.
+        fromPost: The post_id to return the next page of posts from.
+        fromCreateAt: The create_at timestamp to return the next page of posts from.
+        fromUpdateAt: The update_at timestamp to return the next page of posts from.
+        direction: The direction to return the posts. Either 'up' or 'down'.
+        skipFetchThreads: Whether to skip fetching threads or not.
+        collapsedThreads: Whether the client uses Collapsed Reply Threads or not.
+        collapsedThreadsExtended: Whether to return associated users.
+        updatesOnly: This flag is used to make the API work with the updateAt value.
 
     Returns:
-        A dictionary containing the detailed setup information for the
-        requested MCP server, with the following structure:
-        - mcpId (str): Unique identifier for the MCP server.
-        - githubUrl (str): The source URL for the server.
-        - name (str): The display name of the server.
-        - author (str): The author of the server.
-        - description (str): A brief description.
-        - codiconIcon (str): The name of a Codicon icon.
-        - logoUrl (str): A URL to the server's logo.
-        - category (str): The category (e.g., "AI", "Databases").
-        - tags (List[str]): A list of associated tags.
-        - requiresApiKey (bool): True if the server needs API keys.
-        - readmeContent (str): The full README content in Markdown.
-        - llmsInstallationContent (str): Markdown content for installation.
-        - isRecommended (bool): True if the server is recommended.
-        - githubStars (int): Number of GitHub stars.
-        - createdAt (str): ISO 8601 timestamp of creation.
-        - updatedAt (str): ISO 8601 timestamp of last update.
-        - lastGithubSync (str): ISO 8601 timestamp of the last sync with GitHub.
+        A dictionary representing a list of posts in the thread (PostList).
+        - order (List[str]): A list of post IDs in order.
+        - posts (Dict[str, Post]): A dictionary of post objects, keyed by post ID.
+        - next_post_id (str): The ID of the next post.
+        - prev_post_id (str): The ID of the previous post.
+        - has_next (bool): Whether there are more items after this page.
     """
     config = get_service_config(context)
-    logger.info(
-        "Executing get_setup tool for mcp_id: %s against API: %s",
-        mcp_id,
-        config.MATTERMOST_BASE_URL,
-    )
-    request_body = {"mcpId": mcp_id}
-
-    async with get_marketplace_client(config) as client:
+    params = {
+        "perPage": perPage,
+        "fromPost": fromPost,
+        "fromCreateAt": fromCreateAt,
+        "fromUpdateAt": fromUpdateAt,
+        "direction": direction,
+        "skipFetchThreads": skipFetchThreads,
+        "collapsedThreads": collapsedThreads,
+        "collapsedThreadsExtended": collapsedThreadsExtended,
+        "updatesOnly": updatesOnly,
+    }
+    async with get_mattermost_client(config) as client:
         try:
-            response = await client.post("/api/v1/mcp/setup", json=request_body)
+            response = await client.get(
+                f"/api/v4/posts/{post_id}/thread", params=params
+            )
             if response.status_code != 200:
                 await handle_api_error(response)
             return response.json()
         except httpx.RequestError as e:
-            logger.error(f"Request to marketplace API failed: {e}")
-            raise ValueError(f"Failed to connect to the marketplace API: {e}")
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
 
 
-# --- Prompt Handlers ---
+@mcp_app.tool()
+async def create_post(
+    context: Context,
+    channel_id: str,
+    message: str,
+    root_id: str = "",
+    file_ids: Optional[List[str]] = None,
+    props: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    set_online: bool = True,
+) -> dict[str, Any]:
+    """Create a new post in a channel.
 
+    Corresponds to the POST /api/v4/posts endpoint.
 
-@mcp_app.prompt(title=f"{server_config.MATTERMOST_BRAND} Marketplace Assistant (RU)")
-def marketplace_assistant_ru() -> str:
-    """Provide the system prompt for the Russian-speaking marketplace assistant.
+    Args:
+        context: The MCP request context.
+        channel_id: The channel ID to post in.
+        message: The message contents, can be formatted with Markdown.
+        root_id: The post ID to comment on.
+        file_ids: A list of file IDs to associate with the post.
+        props: A general JSON property bag to attach to the post.
+        metadata: A JSON object to add post metadata, e.g., priority.
+        set_online: Whether to set the user status as online or not.
 
     Returns:
-        The raw instruction string.
+        A dictionary representing the created post object.
+        - id (str): The post ID.
+        - create_at (int): Creation timestamp.
+        - update_at (int): Update timestamp.
+        - user_id (str): The user ID of the author.
+        - channel_id (str): The channel ID.
+        - message (str): The post message.
+        ... and other post fields.
     """
-    prompts = get_prompts(server_config)
-    return prompts["get-assistant-instructions-ru"]
+    config = get_service_config(context)
+    post_data = {
+        "channel_id": channel_id,
+        "message": message,
+        "root_id": root_id,
+        "file_ids": file_ids or [],
+        "props": props or {},
+        "metadata": metadata or {},
+    }
+    params = {"set_online": set_online}
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.post("/api/v4/posts", json=post_data, params=params)
+            if response.status_code != 201:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
 
 
-# --- Admin Tools ---
-# The following tools are only registered if the server is started in admin mode.
-if server_config.MCP_ADMIN_MODE:
-    logger.warning("MCP_ADMIN_MODE is enabled. Registering admin tools.")
+@mcp_app.tool()
+async def create_direct_channel(
+    context: Context, user_ids: List[str]
+) -> dict[str, Any]:
+    """Create a new direct message channel between two users.
 
-    @mcp_app.tool()
-    async def create_mcp_entity(
-        context: Context,
-        name: str,
-        author: str,
-        source_url: str,
-        description: str = "",
-        category: str = "Other",
-        logo_url: str = "",
-        tags: list[str] = None,
-        codicon_icon: str = "extensions",
-        is_recommended: bool = False,
-        requires_auth: bool = False,
-        readme_content: str = "",
-        llms_installation_content: str = "",
-    ) -> dict[str, Any]:
-        """Create a new MCP entity in the marketplace (Admin only).
+    Corresponds to the POST /api/v4/channels/direct endpoint.
 
-        This corresponds to the POST /internal/mcp endpoint.
+    Args:
+        context: The MCP request context.
+        user_ids: A list containing the two user IDs for the direct channel.
 
-        Args:
-            context: The MCP request context.
-            name (str): The name of the MCP server.
-            author (str): The author of the MCP server.
-            source_url (str): The GitHub URL or source of the MCP server.
-            description (str, optional): A brief description.
-            category (str, optional): The category of the MCP server. Defaults to "Other".
-            logo_url (str, optional): A URL to the server's logo.
-            tags (List[str], optional): A list of tags.
-            codicon_icon (str, optional): The name of a Codicon icon to use. Defaults to "extensions".
-            is_recommended (bool, optional): Whether the server is recommended. Defaults to False.
-            requires_auth (bool, optional): Whether the server requires authentication credentials. Defaults to False.
-            readme_content (str, optional): The full README content in Markdown.
-            llms_installation_content (str, optional): Markdown content for LLM installation instructions.
+    Returns:
+        A dictionary representing the created channel object.
+        - id (str): The channel ID.
+        - type (str): 'D' for direct.
+        - team_id (str): The team ID.
+        ... and other channel fields.
+    """
+    config = get_service_config(context)
+    if len(user_ids) != 2:
+        raise ValueError("Direct channels must have exactly two user IDs.")
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.post("/api/v4/channels/direct", json=user_ids)
+            if response.status_code != 201:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
 
-        Returns:
-            A dictionary representing the newly created MCP entity with the following structure:
-            - mcpId (str): Unique identifier for the new entity.
-            - name (str): The display name.
-            - author (str): The author.
-            - description (str): The description.
-            - sourceUrl (str): The source URL.
-            - codiconIcon (str): The Codicon icon name.
-            - logoUrl (str): The logo URL.
-            - category (str): The category.
-            - tags (List[str]): List of tags.
-            - readmeContent (str): The initial README content.
-            - llmsInstallationContent (str): The initial installation content.
-            - isRecommended (bool): Recommendation status.
-            - requiresAuth (bool): Authentication requirement status.
-            - downloadCount (int): Initial download count (usually 0).
-            - createdAt (str): ISO 8601 timestamp of creation.
-            - updatedAt (str): ISO 8601 timestamp of last update.
-        """
-        config = get_service_config(context)
-        logger.info(
-            "Executing create_mcp_entity tool for: %s against API: %s",
-            name,
-            config.MATTERMOST_BASE_URL,
-        )
-        request_body = {
-            "name": name,
-            "author": author,
-            "source_url": source_url,
-            "description": description,
-            "category": category,
-            "logo_url": logo_url,
-            "tags": tags or [],
-            "codicon_icon": codicon_icon,
-            "is_recommended": is_recommended,
-            "requires_auth": requires_auth,
-            "readme_content": readme_content,
-            "llms_installation_content": llms_installation_content,
-        }
 
-        async with get_marketplace_client(config) as client:
-            try:
-                response = await client.post("/api/v1/internal/mcp", json=request_body)
-                if response.status_code != 201:
-                    await handle_api_error(response)
-                return response.json()
-            except httpx.RequestError as e:
-                logger.error(f"Request to marketplace API failed: {e}")
-                raise ValueError(f"Failed to connect to the marketplace API: {e}")
+@mcp_app.tool()
+async def create_group_channel(
+    context: Context, user_ids: List[str]
+) -> dict[str, Any]:
+    """Create a new group message channel for a group of users.
 
-    @mcp_app.tool()
-    async def delete_mcp_entity(context: Context, mcp_id: str) -> dict[str, Any]:
-        """Delete an MCP entity from the marketplace (Admin only).
+    Corresponds to the POST /api/v4/channels/group endpoint.
 
-        This corresponds to the POST /internal/mcp/delete endpoint.
+    Args:
+        context: The MCP request context.
+        user_ids: A list of user IDs to include in the group channel.
 
-        Args:
-            context: The MCP request context.
-            mcp_id (str): The unique identifier of the MCP server to delete.
+    Returns:
+        A dictionary representing the created channel object.
+        - id (str): The channel ID.
+        - type (str): 'G' for group.
+        - team_id (str): The team ID.
+        ... and other channel fields.
+    """
+    config = get_service_config(context)
+    if len(user_ids) < 3:
+        raise ValueError("Group channels must have at least three user IDs.")
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.post("/api/v4/channels/group", json=user_ids)
+            if response.status_code != 201:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
 
-        Returns:
-            A dictionary confirming the deletion, e.g.,
-            {"status": "success", "detail": "MCP entity 'some-id' deleted."}
-        """
-        config = get_service_config(context)
-        logger.info(
-            "Executing delete_mcp_entity tool for mcp_id: %s against API: %s",
-            mcp_id,
-            config.MATTERMOST_BASE_URL,
-        )
-        request_body = {"mcpId": mcp_id}
 
-        async with get_marketplace_client(config) as client:
-            try:
-                response = await client.post(
-                    "/api/v1/internal/mcp/delete", json=request_body
-                )
-                if response.status_code != 204:
-                    await handle_api_error(response)
+@mcp_app.tool()
+async def create_channel(
+    context: Context,
+    team_id: str,
+    name: str,
+    display_name: str,
+    channel_type: str,
+    purpose: str = "",
+    header: str = "",
+) -> dict[str, Any]:
+    """Create a new channel.
 
-                # Since 204 No Content has no body, return a success message.
-                return {
-                    "status": "success",
-                    "detail": f"MCP entity '{mcp_id}' deleted.",
-                }
-            except httpx.RequestError as e:
-                logger.error(f"Request to marketplace API failed: {e}")
-                raise ValueError(f"Failed to connect to the marketplace API: {e}")
+    Corresponds to the POST /api/v4/channels endpoint.
 
-else:
-    logger.info("MCP_ADMIN_MODE is disabled. Admin tools are not registered.")
+    Args:
+        context: The MCP request context.
+        team_id: The team ID of the team to create the channel on.
+        name: The unique handle for the channel (will be in the URL).
+        display_name: The non-unique UI name for the channel.
+        channel_type: 'O' for a public channel, 'P' for a private channel.
+        purpose: A short description of the channel's purpose.
+        header: Markdown-formatted text for the channel header.
+
+    Returns:
+        A dictionary representing the created channel object.
+        - id (str): The channel ID.
+        - name (str): The channel handle.
+        - display_name (str): The channel display name.
+        - type (str): The channel type ('O' or 'P').
+        ... and other channel fields.
+    """
+    config = get_service_config(context)
+    channel_data = {
+        "team_id": team_id,
+        "name": name,
+        "display_name": display_name,
+        "type": channel_type,
+        "purpose": purpose,
+        "header": header,
+    }
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.post("/api/v4/channels", json=channel_data)
+            if response.status_code != 201:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def search_channels(
+    context: Context, team_id: str, term: str
+) -> List[dict[str, Any]]:
+    """Search public channels on a team.
+
+    Corresponds to the POST /api/v4/teams/{team_id}/channels/search endpoint.
+
+    Args:
+        context: The MCP request context.
+        team_id: The ID of the team to search in.
+        term: The search term to match against channel names or display names.
+
+    Returns:
+        A list of dictionaries, each representing a channel that matches the search.
+        Each dictionary has the standard channel object structure.
+    """
+    config = get_service_config(context)
+    search_data = {"term": term}
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.post(
+                f"/api/v4/teams/{team_id}/channels/search", json=search_data
+            )
+            if response.status_code != 201: # Note: API spec says 201, but it's a search...
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def search_posts(
+    context: Context,
+    team_id: str,
+    terms: str,
+    is_or_search: bool,
+    time_zone_offset: int = 0,
+    include_deleted_channels: bool = False,
+    page: int = 0,
+    per_page: int = 60,
+) -> dict[str, Any]:
+    """Search for posts in a team.
+
+    Corresponds to the POST /api/v4/teams/{team_id}/posts/search endpoint.
+
+    Args:
+        context: The MCP request context.
+        team_id: The ID of the team to search in.
+        terms: The search terms (e.g., 'from:user in:channel text').
+        is_or_search: Set to true for an OR search, false for an AND search.
+        time_zone_offset: Offset from UTC for date searches.
+        include_deleted_channels: Set to true to include archived channels.
+        page: The page to select (Elasticsearch only).
+        per_page: The number of posts per page (Elasticsearch only).
+
+    Returns:
+        A dictionary representing a list of posts with search matches.
+        - order (List[str]): A list of post IDs in order.
+        - posts (Dict[str, Post]): A dictionary of post objects.
+        - matches (Dict[str, List[str]]): A mapping of post IDs to matched terms.
+    """
+    config = get_service_config(context)
+    search_data = {
+        "terms": terms,
+        "is_or_search": is_or_search,
+        "time_zone_offset": time_zone_offset,
+        "include_deleted_channels": include_deleted_channels,
+        "page": page,
+        "per_page": per_page,
+    }
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.post(
+                f"/api/v4/teams/{team_id}/posts/search", json=search_data
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_posts_for_channel(
+    context: Context,
+    channel_id: str,
+    page: int = 0,
+    per_page: int = 60,
+    since: Optional[int] = None,
+    before: Optional[str] = None,
+    after: Optional[str] = None,
+    include_deleted: bool = False,
+) -> dict[str, Any]:
+    """Get a page of posts in a channel.
+
+    Corresponds to the GET /api/v4/channels/{channel_id}/posts endpoint.
+
+    Args:
+        context: The MCP request context.
+        channel_id: The ID of the channel to get posts for.
+        page: The page to select.
+        per_page: The number of posts per page.
+        since: Get posts modified after this Unix time in ms.
+        before: Get posts that came before this post ID.
+        after: Get posts that came after this post ID.
+        include_deleted: Whether to include deleted posts (admin only).
+
+    Returns:
+        A dictionary representing a list of posts (PostList).
+        - order (List[str]): A list of post IDs in order.
+        - posts (Dict[str, Post]): A dictionary of post objects.
+        - next_post_id (str): The ID of the next post.
+        - prev_post_id (str): The ID of the previous post.
+        - has_next (bool): Whether there are more items after this page.
+    """
+    config = get_service_config(context)
+    params = {
+        "page": page,
+        "per_page": per_page,
+        "since": since,
+        "before": before,
+        "after": after,
+        "include_deleted": include_deleted,
+    }
+    # Filter out None values so they aren't sent as query params
+    params = {k: v for k, v in params.items() if v is not None}
+    async with get_mattermost_client(config) as client:
+        try:
+            response = await client.get(
+                f"/api/v4/channels/{channel_id}/posts", params=params
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
