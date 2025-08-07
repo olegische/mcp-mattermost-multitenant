@@ -164,6 +164,294 @@ servers:
     your-mattermost-url:
       default: http://localhost:8065
 paths:
+  /api/v4/users/{user_id}/teams/{team_id}/threads:
+    get:
+      tags:
+        - threads
+      summary: Get all threads that user is following
+      description: |
+        Get all threads that user is following
+
+        __Minimum server version__: 5.29
+
+        ##### Permissions
+        Must be logged in as the user or have `edit_other_users` permission.
+      operationId: GetUserThreads
+      parameters:
+        - name: user_id
+          in: path
+          description: The ID of the user. This can also be "me" which will point to the current user.
+          required: true
+          schema:
+            type: string
+        - name: team_id
+          in: path
+          description: The ID of the team in which the thread is.
+          required: true
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Since filters the threads based on their LastUpdateAt timestamp.
+          schema:
+            type: integer
+        - name: deleted
+          in: query
+          description: Deleted will specify that even deleted threads should be returned (For mobile sync).
+          schema:
+            type: boolean
+            default: false
+        - name: extended
+          in: query
+          description: Extended will enrich the response with participant details.
+          schema:
+            type: boolean
+            default: false
+        - name: page
+          in: query
+          description: Page specifies which part of the results to return, by per_page.
+          schema:
+            type: integer
+            default: 0
+        - name: per_page
+          in: query
+          description: The size of the returned chunk of results.
+          schema:
+            type: integer
+            default: 60
+        - name: totalsOnly
+          in: query
+          description: Setting this to true will only return the total counts.
+          schema:
+            type: boolean
+            default: false
+        - name: threadsOnly
+          in: query
+          description: Setting this to true will only return threads.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: User's thread retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserThreads'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /api/v4/users/{user_id}/teams/{team_id}/threads/mention_counts:
+    get:
+      tags:
+        - threads
+      summary: Get all unread mention counts from followed threads, per-channel
+      description: |
+        Get all unread mention counts from followed threads
+
+        __Minimum server version__: 5.29
+
+        ##### Permissions
+        Must be logged in as the user or have `edit_other_users` permission.
+      operationId: GetThreadMentionCountsByChannel
+      parameters:
+        - name: user_id
+          in: path
+          description: The ID of the user. This can also be "me" which will point to the current user.
+          required: true
+          schema:
+            type: string
+        - name: team_id
+          in: path
+          description: The ID of the team in which the thread is.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Get was successful
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /api/v4/users/{user_id}/teams/{team_id}/threads/read:
+    put:
+      tags:
+        - threads
+      summary: Mark all threads that user is following as read
+      description: |
+        Mark all threads that user is following as read
+
+        __Minimum server version__: 5.29
+
+        ##### Permissions
+        Must be logged in as the user or have `edit_other_users` permission.
+      operationId: UpdateThreadsReadForUser
+      parameters:
+        - name: user_id
+          in: path
+          description: The ID of the user. This can also be "me" which will point to the current user.
+          required: true
+          schema:
+            type: string
+        - name: team_id
+          in: path
+          description: The ID of the team in which the thread is.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User's thread update successful
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /api/v4/users/{user_id}/teams/unread:
+    get:
+      tags:
+        - teams
+      summary: Get team unreads for a user
+      description: >
+        Get the count for unread messages and mentions in the teams the user is a member of.
+
+        ##### Permissions
+
+        Must be logged in.
+
+      operationId: GetTeamsUnreadForUser
+      parameters:
+        - name: user_id
+          in: path
+          description: User GUID
+          required: true
+          schema:
+            type: string
+        - name: exclude_team
+          in: query
+          description: Optional team id to be excluded from the results
+          required: true
+          schema:
+            type: string
+        - name: include_collapsed_threads
+          in: query
+          description: Boolean to determine whether the collapsed threads should be included or not
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Team unreads retrieval successful
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamUnread'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+  /api/v4/users/{user_id}/teams/{team_id}/unread:
+    get:
+      tags:
+        - teams
+      summary: Get unreads for a team
+      description: >
+        Get the unread mention and message counts for a team for the specified user.
+
+        ##### Permissions
+
+        Must be the user or have `edit_other_users` permission and have `view_team` permission for the team.
+
+      operationId: GetTeamUnread
+      parameters:
+        - name: user_id
+          in: path
+          description: User GUID
+          required: true
+          schema:
+            type: string
+        - name: team_id
+          in: path
+          description: Team GUID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team unread count retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamUnread'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /api/v4/users/{user_id}/channels:
+    get:
+      tags:
+        - channels
+      summary: Get all channels from all teams
+      description: |
+        Get all channels from all teams that a user is a member of.
+
+        __Minimum server version__: 6.1
+
+        ##### Permissions
+
+        Logged in as the user, or have `edit_other_users` permission.
+      operationId: GetChannelsForUser
+      parameters:
+        - name: user_id
+          in: path
+          description: The ID of the user. This can also be "me" which will point to the current user.
+          required: true
+          schema:
+            type: string
+        - name: last_delete_at
+          in: query
+          description: Filters the deleted channels by this time in epoch format. Does not have any effect if include_deleted is set to false.
+          schema:
+            type: integer
+            default: 0
+        - name: include_deleted
+          in: query
+          description: Defines if deleted channels should be returned or not
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Channels retrieval successful
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Channel'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /api/v4/users/{user_id}/channels/{channel_id}/unread:
     get:
       tags:
@@ -1355,6 +1643,51 @@ components:
             post_id1:
             - search match 1
             - search match 2
+    UserThreads:
+      type: object
+      properties:
+        total:
+          description: Total number of threads (used for paging)
+          type: integer
+        threads:
+          description: Array of threads
+          type: array
+          items:
+            $ref: '#/components/schemas/UserThread'
+    UserThread:
+      description: a thread that user is following
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID of the post that is this thread's root
+        reply_count:
+          type: integer
+          description: number of replies in this thread
+        last_reply_at:
+          type: integer
+          format: int64
+          description: timestamp of the last post to this thread
+        last_viewed_at:
+          type: integer
+          format: int64
+          description: timestamp of the last time the user viewed this thread
+        participants:
+          type: array
+          description: list of users participating in this thread. only includes IDs unless 'extended' was set to 'true'
+          items:
+            $ref: '#/components/schemas/Post'
+        post:
+          $ref: '#/components/schemas/Post'
+    TeamUnread:
+      type: object
+      properties:
+        team_id:
+          type: string
+        msg_count:
+          type: integer
+        mention_count:
+          type: integer
   responses:
     BadRequest:
       description: Invalid or missing parameters in URL or request body

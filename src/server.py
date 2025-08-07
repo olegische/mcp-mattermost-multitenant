@@ -125,6 +125,226 @@ async def get_channel_unread(
 
 
 @mcp_app.tool()
+async def search_users(
+    context: Context,
+    term: str,
+    team_id: str = "",
+    not_in_team_id: str = "",
+    in_channel_id: str = "",
+    not_in_channel_id: str = "",
+    in_group_id: str = "",
+    group_constrained: bool = False,
+    allow_inactive: bool = False,
+    without_team: bool = False,
+    limit: int = 100,
+) -> List[dict[str, Any]]:
+    """Search for users.
+
+    Corresponds to the POST /api/v4/users/search endpoint.
+
+    Args:
+        context: The MCP request context.
+        term: The term to match against username, full name, nickname and email.
+        team_id: If provided, only search users on this team.
+        not_in_team_id: If provided, only search users not on this team.
+        in_channel_id: If provided, only search users in this channel.
+        not_in_channel_id: If provided, only search users not in this channel.
+        in_group_id: If provided, only search users in this group.
+        group_constrained: Return only users that are allowed to join the channel or team.
+        allow_inactive: When `true`, include deactivated users in the results.
+        without_team: Set to `true` to search for users not on a team.
+        limit: The maximum number of users to return.
+
+    Returns:
+        A list of user objects matching the search criteria.
+    """
+    logger.info("Entering search_users")
+    search_data = {
+        "term": term,
+        "team_id": team_id,
+        "not_in_team_id": not_in_team_id,
+        "in_channel_id": in_channel_id,
+        "not_in_channel_id": not_in_channel_id,
+        "in_group_id": in_group_id,
+        "group_constrained": group_constrained,
+        "allow_inactive": allow_inactive,
+        "without_team": without_team,
+        "limit": limit,
+    }
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.post("/api/v4/users/search", json=search_data)
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_user_threads(
+    context: Context,
+    user_id: str,
+    team_id: str,
+    since: Optional[int] = None,
+    deleted: bool = False,
+    extended: bool = False,
+    page: int = 0,
+    per_page: int = 20,
+    totals_only: bool = False,
+    threads_only: bool = False,
+) -> dict[str, Any]:
+    """Get all threads that user is following.
+
+    Corresponds to the GET /api/v4/users/{user_id}/teams/{team_id}/threads endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user.
+        team_id: The ID of the team.
+        since: Filters threads based on their LastUpdateAt timestamp.
+        deleted: Specifies that even deleted threads should be returned.
+        extended: Enriches the response with participant details.
+        page: Specifies which part of the results to return.
+        per_page: The size of the returned chunk of results.
+        totals_only: Setting this to true will only return the total counts.
+        threads_only: Setting this to true will only return threads.
+
+    Returns:
+        A dictionary containing the user's threads with the following structure:
+        - total (int): Total number of threads.
+        - threads (List[dict]): A list of thread objects.
+    """
+    logger.info("Entering get_user_threads")
+    params = {
+        "since": since,
+        "deleted": deleted,
+        "extended": extended,
+        "page": page,
+        "per_page": per_page,
+        "totalsOnly": totals_only,
+        "threadsOnly": threads_only,
+    }
+    params = {k: v for k, v in params.items() if v is not None}
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(
+                f"/api/v4/users/{user_id}/teams/{team_id}/threads", params=params
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def update_threads_read_for_user(
+    context: Context, user_id: str, team_id: str
+) -> dict[str, Any]:
+    """Mark all threads that user is following as read.
+
+    Corresponds to the PUT /api/v4/users/{user_id}/teams/{team_id}/threads/read endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user.
+        team_id: The ID of the team.
+
+    Returns:
+        A dictionary confirming the update, usually empty on success.
+    """
+    logger.info("Entering update_threads_read_for_user")
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.put(
+                f"/api/v4/users/{user_id}/teams/{team_id}/threads/read"
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_teams_unread_for_user(
+    context: Context,
+    user_id: str,
+    exclude_team: str,
+    include_collapsed_threads: bool = False,
+) -> List[dict[str, Any]]:
+    """Get team unreads for a user.
+
+    Corresponds to the GET /api/v4/users/{user_id}/teams/unread endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user.
+        exclude_team: Optional team id to be excluded from the results.
+        include_collapsed_threads: Whether to include collapsed threads.
+
+    Returns:
+        A list of dictionaries, each representing a team's unread count:
+        - team_id (str): The team's unique identifier.
+        - msg_count (int): The total number of unread messages.
+        - mention_count (int): The number of unread messages that are mentions.
+    """
+    logger.info("Entering get_teams_unread_for_user")
+    params = {
+        "exclude_team": exclude_team,
+        "include_collapsed_threads": include_collapsed_threads,
+    }
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(
+                f"/api/v4/users/{user_id}/teams/unread", params=params
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_team_unread(
+    context: Context, user_id: str, team_id: str
+) -> dict[str, Any]:
+    """Get unreads for a team.
+
+    Corresponds to the GET /api/v4/users/{user_id}/teams/{team_id}/unread endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user.
+        team_id: The ID of the team.
+
+    Returns:
+        A dictionary representing a team's unread count:
+        - team_id (str): The team's unique identifier.
+        - msg_count (int): The total number of unread messages.
+        - mention_count (int): The number of unread messages that are mentions.
+    """
+    logger.info("Entering get_team_unread")
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(
+                f"/api/v4/users/{user_id}/teams/{team_id}/unread"
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
 async def get_user(context: Context, user_id: str) -> dict[str, Any]:
     """Get a user object.
 
@@ -578,6 +798,44 @@ async def search_posts(
         try:
             response = await client.post(
                 f"/api/v4/teams/{team_id}/posts/search", json=search_data
+            )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_channels_for_user(
+    context: Context,
+    user_id: str,
+    last_delete_at: int = 0,
+    include_deleted: bool = False,
+) -> List[dict[str, Any]]:
+    """Get all channels from all teams that a user is a member of.
+
+    Corresponds to the GET /api/v4/users/{user_id}/channels endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user. Can be 'me' for the current user.
+        last_delete_at: Filters channels by this time in epoch format.
+        include_deleted: Defines if deleted channels should be returned.
+
+    Returns:
+        A list of channel objects.
+    """
+    logger.info("Entering get_channels_for_user")
+    params = {
+        "last_delete_at": last_delete_at,
+        "include_deleted": include_deleted,
+    }
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(
+                f"/api/v4/users/{user_id}/channels", params=params
             )
             if response.status_code != 200:
                 await handle_api_error(response)
