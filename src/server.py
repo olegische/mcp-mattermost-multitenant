@@ -161,6 +161,42 @@ async def get_user(context: Context, user_id: str) -> dict[str, Any]:
 
 
 @mcp_app.tool()
+async def get_user_by_username(context: Context, username: str) -> dict[str, Any]:
+    """Get a user object by username.
+
+    Corresponds to the GET /api/v4/users/username/{username} endpoint.
+
+    Args:
+        context: The MCP request context.
+        username: The username of the user to get.
+
+    Returns:
+        A dictionary representing the user object, containing fields like:
+        - id (str): The user's unique identifier.
+        - create_at (int): The time in milliseconds the user was created.
+        - update_at (int): The time in milliseconds the user was last updated.
+        - delete_at (int): The time in milliseconds the user was deleted.
+        - username (str): The user's unique username.
+        - first_name (str): The user's first name.
+        - last_name (str): The user's last name.
+        - nickname (str): The user's nickname.
+        - email (str): The user's email address.
+        - roles (str): The roles assigned to the user (e.g., 'system_user system_admin').
+        - locale (str): The user's locale (e.g., 'en').
+    """
+    logger.info("Entering get_user_by_username")
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(f"/api/v4/users/username/{username}")
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
 async def get_teams_for_user(context: Context, user_id: str) -> List[dict[str, Any]]:
     """Get a list of teams that a user is on.
 
