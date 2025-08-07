@@ -15,7 +15,6 @@ from starlette.middleware import Middleware
 from mcp.server.fastmcp import Context, FastMCP
 
 from .utils.config import ServiceConfig
-from .utils.dependencies import get_mattermost_client, get_service_config
 
 # Get a module-level logger
 logger = logging.getLogger(__name__)
@@ -70,9 +69,11 @@ def build_server(config: ServiceConfig) -> CustomFastMCP:
     )
 
 
+from .utils.dependencies import get_base_config, get_mattermost_client
+
 # Get the base configuration for server initialization.
 # This is also imported by main.py to run the server.
-server_config = get_service_config(Context())
+server_config = get_base_config()
 mcp_app = build_server(server_config)
 
 
@@ -111,7 +112,7 @@ async def get_channel_unread(
         - mention_count (int): The number of unread messages that are mentions.
     """
     logger.info("Entering get_channel_unread")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/users/{user_id}/channels/{channel_id}/unread"
@@ -171,7 +172,7 @@ async def search_users(
         "without_team": without_team,
         "limit": limit,
     }
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post("/api/v4/users/search", json=search_data)
             if response.status_code != 200:
@@ -227,7 +228,7 @@ async def get_user_threads(
         "threadsOnly": threads_only,
     }
     params = {k: v for k, v in params.items() if v is not None}
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/users/{user_id}/teams/{team_id}/threads", params=params
@@ -257,7 +258,7 @@ async def update_threads_read_for_user(
         A dictionary confirming the update, usually empty on success.
     """
     logger.info("Entering update_threads_read_for_user")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.put(
                 f"/api/v4/users/{user_id}/teams/{team_id}/threads/read"
@@ -298,7 +299,7 @@ async def get_teams_unread_for_user(
         "exclude_team": exclude_team,
         "include_collapsed_threads": include_collapsed_threads,
     }
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/users/{user_id}/teams/unread", params=params
@@ -331,7 +332,7 @@ async def get_team_unread(
         - mention_count (int): The number of unread messages that are mentions.
     """
     logger.info("Entering get_team_unread")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/users/{user_id}/teams/{team_id}/unread"
@@ -369,7 +370,7 @@ async def get_user(context: Context, user_id: str) -> dict[str, Any]:
         - locale (str): The user's locale (e.g., 'en').
     """
     logger.info("Entering get_user")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(f"/api/v4/users/{user_id}")
             if response.status_code != 200:
@@ -405,7 +406,7 @@ async def get_user_by_username(context: Context, username: str) -> dict[str, Any
         - locale (str): The user's locale (e.g., 'en').
     """
     logger.info("Entering get_user_by_username")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(f"/api/v4/users/username/{username}")
             if response.status_code != 200:
@@ -439,7 +440,7 @@ async def get_teams_for_user(context: Context, user_id: str) -> List[dict[str, A
         - type (str): 'O' for open team, 'I' for invite-only team.
     """
     logger.info("Entering get_teams_for_user")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(f"/api/v4/users/{user_id}/teams")
             if response.status_code != 200:
@@ -501,7 +502,7 @@ async def get_post_thread(
         "collapsedThreadsExtended": collapsedThreadsExtended,
         "updatesOnly": updatesOnly,
     }
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/posts/{post_id}/thread", params=params
@@ -559,7 +560,7 @@ async def create_post(
         "metadata": metadata or {},
     }
     params = {"set_online": set_online}
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post("/api/v4/posts", json=post_data, params=params)
             if response.status_code != 201:
@@ -592,7 +593,7 @@ async def create_direct_channel(
     logger.info("Entering create_direct_channel")
     if len(user_ids) != 2:
         raise ValueError("Direct channels must have exactly two user IDs.")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post("/api/v4/channels/direct", json=user_ids)
             if response.status_code != 201:
@@ -625,7 +626,7 @@ async def create_group_channel(
     logger.info("Entering create_group_channel")
     if len(user_ids) < 3:
         raise ValueError("Group channels must have at least three user IDs.")
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post("/api/v4/channels/group", json=user_ids)
             if response.status_code != 201:
@@ -676,7 +677,7 @@ async def create_channel(
         "purpose": purpose,
         "header": header,
     }
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post("/api/v4/channels", json=channel_data)
             if response.status_code != 201:
@@ -709,7 +710,7 @@ async def search_all_channels(
     """
     logger.info("Entering search_all_channels")
     search_data = {"term": term}
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post(
                 "/api/v4/channels/search", json=search_data
@@ -741,7 +742,7 @@ async def search_channels(
     """
     logger.info("Entering search_channels")
     search_data = {"term": term}
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post(
                 f"/api/v4/teams/{team_id}/channels/search", json=search_data
@@ -794,7 +795,7 @@ async def search_posts(
         "page": page,
         "per_page": per_page,
     }
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.post(
                 f"/api/v4/teams/{team_id}/posts/search", json=search_data
@@ -832,7 +833,7 @@ async def get_channels_for_user(
         "last_delete_at": last_delete_at,
         "include_deleted": include_deleted,
     }
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/users/{user_id}/channels", params=params
@@ -889,7 +890,7 @@ async def get_posts_for_channel(
     }
     # Filter out None values so they aren't sent as query params
     params = {k: v for k, v in params.items() if v is not None}
-    async with get_mattermost_client() as client:
+    async with get_mattermost_client(context) as client:
         try:
             response = await client.get(
                 f"/api/v4/channels/{channel_id}/posts", params=params
