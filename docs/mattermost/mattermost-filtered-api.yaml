@@ -205,6 +205,71 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v4/users/{user_id}:
+    get:
+      tags:
+        - users
+      summary: Get a user
+      description: |
+        Get a user a object. Sensitive information will be sanitized out.
+        ##### Permissions
+        Requires an active session but no other permissions.
+      operationId: GetUser
+      parameters:
+        - name: user_id
+          in: path
+          description: User GUID. This can also be "me" which will point to the current user.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User retrieval successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /api/v4/users/{user_id}/teams:
+    get:
+      tags:
+        - teams
+      summary: Get a user's teams
+      description: >
+        Get a list of teams that a user is on.
+
+        ##### Permissions
+
+        Must be authenticated as the user or have the `manage_system` permission.
+
+      operationId: GetTeamsForUser
+      parameters:
+        - name: user_id
+          in: path
+          description: User GUID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team list retrieval successful
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Team'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
       x-codeSamples:
@@ -772,6 +837,173 @@ paths:
           $ref: '#/components/responses/Forbidden'
 components:
   schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        create_at:
+          description: The time in milliseconds a user was created
+          type: integer
+          format: int64
+        update_at:
+          description: The time in milliseconds a user was last updated
+          type: integer
+          format: int64
+        delete_at:
+          description: The time in milliseconds a user was deleted
+          type: integer
+          format: int64
+        username:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        nickname:
+          type: string
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        auth_service:
+          type: string
+        roles:
+          type: string
+        locale:
+          type: string
+        notify_props:
+          $ref: '#/components/schemas/UserNotifyProps'
+        props:
+          type: object
+        last_password_update:
+          type: integer
+          format: int64
+        last_picture_update:
+          type: integer
+          format: int64
+        failed_attempts:
+          type: integer
+        mfa_active:
+          type: boolean
+        timezone:
+          $ref: '#/components/schemas/Timezone'
+        terms_of_service_id:
+          description: ID of accepted terms of service, if any. This field is not present if empty.
+          type: string
+        terms_of_service_create_at:
+          description: The time in milliseconds the user accepted the terms of service
+          type: integer
+          format: int64
+    UsersStats:
+      type: object
+      properties:
+        total_users_count:
+          type: integer
+    KnownUsers:
+      type: array
+      properties:
+        items:
+          type: string
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+        create_at:
+          description: The time in milliseconds a team was created
+          type: integer
+          format: int64
+        update_at:
+          description: The time in milliseconds a team was last updated
+          type: integer
+          format: int64
+        delete_at:
+          description: The time in milliseconds a team was deleted
+          type: integer
+          format: int64
+        display_name:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        email:
+          type: string
+        type:
+          type: string
+        allowed_domains:
+          type: string
+        invite_id:
+          type: string
+        allow_open_invite:
+          type: boolean
+        policy_id:
+          type: string
+          description: The data retention policy to which this team has been assigned. If no such policy exists, or the caller does not have the `sysconsole_read_compliance_data_retention` permission, this field will be null.
+    TeamStats:
+      type: object
+      properties:
+        team_id:
+          type: string
+        total_member_count:
+          type: integer
+    TeamExists:
+      type: object
+      properties:
+        exists:
+          type: boolean
+    UserNotifyProps:
+      type: object
+      properties:
+        email:
+          type: string
+          description: Set to "true" to enable email notifications, "false" to disable. Defaults to "true".
+        push:
+          type: string
+          description: Set to "all" to receive push notifications for all activity, "mention" for mentions and direct messages only, and "none" to disable. Defaults to "mention".
+        desktop:
+          type: string
+          description: Set to "all" to receive desktop notifications for all activity, "mention" for mentions and direct messages only, and "none" to disable. Defaults to "all".
+        desktop_sound:
+          type: string
+          description: Set to "true" to enable sound on desktop notifications, "false" to disable. Defaults to "true".
+        mention_keys:
+          type: string
+          description: A comma-separated list of words to count as mentions. Defaults to username and @username.
+        channel:
+          type: string
+          description: Set to "true" to enable channel-wide notifications (@channel, @all, etc.), "false" to disable. Defaults to "true".
+        first_name:
+          type: string
+          description: Set to "true" to enable mentions for first name. Defaults to "true" if a first name is set, "false" otherwise.
+    Timezone:
+      type: object
+      properties:
+        useAutomaticTimezone:
+          type: boolean
+          description: Set to "true" to use the browser/system timezone, "false" to set manually. Defaults to "true".
+        manualTimezone:
+          type: string
+          description: Value when setting manually the timezone, i.e. "Europe/Berlin".
+        automaticTimezone:
+          type: string
+          description: This value is set automatically when the "useAutomaticTimezone" is set to "true".
+    ChannelNotifyProps:
+      type: object
+      properties:
+        email:
+          type: string
+          description: Set to "true" to enable email notifications, "false" to disable, or "default" to use the global user notification setting.
+        push:
+          type: string
+          description: Set to "all" to receive push notifications for all activity, "mention" for mentions and direct messages only, "none" to disable, or "default" to use the global user notification setting.
+        desktop:
+          type: string
+          description: Set to "all" to receive desktop notifications for all activity, "mention" for mentions and direct messages only, "none" to disable, or "default" to use the global user notification setting.
+        mark_unread:
+          type: string
+          description: Set to "all" to mark the channel unread for any new message, "mention" to mark unread for new mentions only. Defaults to "all".
     ChannelUnread:
       type: object
       properties:

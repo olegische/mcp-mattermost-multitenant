@@ -5,33 +5,9 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 
 import httpx
-from pydantic_settings import BaseSettings
-
 from mcp.server.fastmcp import Context
 
-
-class ServiceConfig(BaseSettings):
-    """
-    Defines the configuration for the MCP server, loaded from environment
-    variables or a .env file.
-    """
-
-    # MCP Server transport mechanism (e.g., "stdio", "sse", "streamable-http")
-    MCP_TRANSPORT: str = "stdio"
-    # Host for the MCP server to bind to. Defaults to 0.0.0.0 for accessibility.
-    MCP_HOST: str = "0.0.0.0"
-    # Port for the MCP server to listen on.
-    MCP_PORT: int = 8660
-    # The base URL for the marketplace API that this server wraps.
-    MATTERMOST_BASE_URL: str = "http://127.0.0.1:8000"
-
-    class Config:
-        """Pydantic configuration settings."""
-
-        # We do not specify env_file here.
-        # Environment loading is handled explicitly in main.py via load_dotenv
-        # to ensure the correct .env file is used.
-        extra = "ignore"
+from .config import ServiceConfig
 
 
 @lru_cache
@@ -60,7 +36,7 @@ def get_service_config(context: Context) -> ServiceConfig:
     modifications within a request's lifecycle do not pollute the global state.
 
     Args:
-        context: The MCP request context.
+        context: The MCP request context (unused in this implementation).
 
     Returns:
         A request-specific ServiceConfig instance.
@@ -73,22 +49,40 @@ def get_service_config(context: Context) -> ServiceConfig:
     return get_base_config().model_copy(deep=True)
 
 
+@lru_cache()
+def get_shared_mattermost_client() -> httpx.AsyncClient:
+    """
+    Creates and returns a singleton httpx.AsyncClient instance.
+
+    This function is cached via lru_cache, ensuring that the client is
+    created only once for the application's lifetime. It internally retrieves
+    the base configuration to set up the client.
+    """
+    config = get_base_config()
+    headers = {}
+    if config.MATTERMOST_API_KEY:
+        headers["Authorization"] = f"Bearer {config.MATTERMOST_API_KEY}"
+    elif config.MATTERMOST_COOKIE:
+        headers["Cookie"] = f"MMAUTHTOKEN={config.MATTERMOST_COOKIE}"
+        if config.MATTERMOST_CSRF_TOKEN:
+            headers["X-CSRF-Token"] = config.MATTERMOST_CSRF_TOKEN
+
+    return httpx.AsyncClient(base_url=config.MATTERMOST_BASE_URL, headers=headers)
+
+
 @asynccontextmanager
-async def get_mattermost_client(
-    config: ServiceConfig,
-) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def get_mattermost_client() -> AsyncGenerator[httpx.AsyncClient, None]:
     """
-    An asynchronous context manager that provides a configured httpx.AsyncClient.
+    An asynchronous context manager that provides the shared httpx.AsyncClient.
 
-    This client is configured with the base URL of the marketplace API.
-    Using a context manager ensures that the client's resources are properly
-    managed and released.
-
-    Args:
-        config: The service configuration containing the API base URL.
-
-    Yields:
-        An instance of httpx.AsyncClient.
+    This allows tool functions to get the client instance while maintaining a
+    consistent async context manager pattern, even though the client itself
+    is a long-lived singleton.
     """
-    async with httpx.AsyncClient(base_url=config.MATTERMOST_BASE_URL) as client:
+    client = get_shared_mattermost_client()
+    try:
         yield client
+    finally:
+        # The client is intentionally not closed here to preserve it across
+        # multiple tool calls. It will be closed when the server shuts down.
+        pass

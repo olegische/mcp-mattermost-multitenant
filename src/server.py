@@ -14,11 +14,8 @@ from starlette.middleware import Middleware
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from .utils.dependencies import (
-    ServiceConfig,
-    get_mattermost_client,
-    get_service_config,
-)
+from .utils.config import ServiceConfig
+from .utils.dependencies import get_mattermost_client, get_service_config
 
 # Get a module-level logger
 logger = logging.getLogger(__name__)
@@ -74,7 +71,7 @@ def build_server(config: ServiceConfig) -> CustomFastMCP:
 
 
 # Get the base configuration for server initialization.
-# Tool-specific calls will use get_service_config(context) for request-scoped config.
+# This is also imported by main.py to run the server.
 server_config = get_service_config(Context())
 mcp_app = build_server(server_config)
 
@@ -113,12 +110,82 @@ async def get_channel_unread(
         - msg_count (int): The total number of unread messages.
         - mention_count (int): The number of unread messages that are mentions.
     """
-    config = get_service_config(context)
-    async with get_mattermost_client(config) as client:
+    logger.info("Entering get_channel_unread")
+    async with get_mattermost_client() as client:
         try:
             response = await client.get(
                 f"/api/v4/users/{user_id}/channels/{channel_id}/unread"
             )
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_user(context: Context, user_id: str) -> dict[str, Any]:
+    """Get a user object.
+
+    Corresponds to the GET /api/v4/users/{user_id} endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user to get. Can be 'me' for the current user.
+
+    Returns:
+        A dictionary representing the user object, containing fields like:
+        - id (str): The user's unique identifier.
+        - create_at (int): The time in milliseconds the user was created.
+        - update_at (int): The time in milliseconds the user was last updated.
+        - delete_at (int): The time in milliseconds the user was deleted.
+        - username (str): The user's unique username.
+        - first_name (str): The user's first name.
+        - last_name (str): The user's last name.
+        - nickname (str): The user's nickname.
+        - email (str): The user's email address.
+        - roles (str): The roles assigned to the user (e.g., 'system_user system_admin').
+        - locale (str): The user's locale (e.g., 'en').
+    """
+    logger.info("Entering get_user")
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(f"/api/v4/users/{user_id}")
+            if response.status_code != 200:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def get_teams_for_user(context: Context, user_id: str) -> List[dict[str, Any]]:
+    """Get a list of teams that a user is on.
+
+    Corresponds to the GET /api/v4/users/{user_id}/teams endpoint.
+
+    Args:
+        context: The MCP request context.
+        user_id: The ID of the user to get teams for. Can be 'me'.
+
+    Returns:
+        A list of dictionaries, each representing a team object the user belongs to.
+        Each team object contains fields like:
+        - id (str): The team's unique identifier.
+        - create_at (int): The time in milliseconds the team was created.
+        - update_at (int): The time in milliseconds the team was last updated.
+        - delete_at (int): The time in milliseconds the team was deleted.
+        - display_name (str): The team's display name.
+        - name (str): The team's unique name, used in the URL.
+        - description (str): A description of the team.
+        - type (str): 'O' for open team, 'I' for invite-only team.
+    """
+    logger.info("Entering get_teams_for_user")
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.get(f"/api/v4/users/{user_id}/teams")
             if response.status_code != 200:
                 await handle_api_error(response)
             return response.json()
@@ -166,7 +233,7 @@ async def get_post_thread(
         - prev_post_id (str): The ID of the previous post.
         - has_next (bool): Whether there are more items after this page.
     """
-    config = get_service_config(context)
+    logger.info("Entering get_post_thread")
     params = {
         "perPage": perPage,
         "fromPost": fromPost,
@@ -178,7 +245,7 @@ async def get_post_thread(
         "collapsedThreadsExtended": collapsedThreadsExtended,
         "updatesOnly": updatesOnly,
     }
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.get(
                 f"/api/v4/posts/{post_id}/thread", params=params
@@ -226,7 +293,7 @@ async def create_post(
         - message (str): The post message.
         ... and other post fields.
     """
-    config = get_service_config(context)
+    logger.info("Entering create_post")
     post_data = {
         "channel_id": channel_id,
         "message": message,
@@ -236,7 +303,7 @@ async def create_post(
         "metadata": metadata or {},
     }
     params = {"set_online": set_online}
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.post("/api/v4/posts", json=post_data, params=params)
             if response.status_code != 201:
@@ -266,10 +333,10 @@ async def create_direct_channel(
         - team_id (str): The team ID.
         ... and other channel fields.
     """
-    config = get_service_config(context)
+    logger.info("Entering create_direct_channel")
     if len(user_ids) != 2:
         raise ValueError("Direct channels must have exactly two user IDs.")
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.post("/api/v4/channels/direct", json=user_ids)
             if response.status_code != 201:
@@ -299,10 +366,10 @@ async def create_group_channel(
         - team_id (str): The team ID.
         ... and other channel fields.
     """
-    config = get_service_config(context)
+    logger.info("Entering create_group_channel")
     if len(user_ids) < 3:
         raise ValueError("Group channels must have at least three user IDs.")
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.post("/api/v4/channels/group", json=user_ids)
             if response.status_code != 201:
@@ -344,7 +411,7 @@ async def create_channel(
         - type (str): The channel type ('O' or 'P').
         ... and other channel fields.
     """
-    config = get_service_config(context)
+    logger.info("Entering create_channel")
     channel_data = {
         "team_id": team_id,
         "name": name,
@@ -353,10 +420,45 @@ async def create_channel(
         "purpose": purpose,
         "header": header,
     }
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.post("/api/v4/channels", json=channel_data)
             if response.status_code != 201:
+                await handle_api_error(response)
+            return response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Request to Mattermost API failed: {e}")
+            raise ValueError(f"Failed to connect to the Mattermost API: {e}")
+
+
+@mcp_app.tool()
+async def search_all_channels(
+    context: Context, term: str
+) -> List[dict[str, Any]]:
+    """Search all public and private channels across all teams.
+
+    Corresponds to the POST /api/v4/channels/search endpoint.
+
+    Note: This tool typically requires system administrator privileges. For non-admin
+    users, it will likely result in a 403 Forbidden error. Prefer `search_channels`
+    scoped to a specific team.
+
+    Args:
+        context: The MCP request context.
+        term: The search term to match against channel names or display names.
+
+    Returns:
+        A list of dictionaries, each representing a channel that matches the search.
+        Each dictionary has the standard channel object structure.
+    """
+    logger.info("Entering search_all_channels")
+    search_data = {"term": term}
+    async with get_mattermost_client() as client:
+        try:
+            response = await client.post(
+                "/api/v4/channels/search", json=search_data
+            )
+            if response.status_code != 200:
                 await handle_api_error(response)
             return response.json()
         except httpx.RequestError as e:
@@ -381,14 +483,14 @@ async def search_channels(
         A list of dictionaries, each representing a channel that matches the search.
         Each dictionary has the standard channel object structure.
     """
-    config = get_service_config(context)
+    logger.info("Entering search_channels")
     search_data = {"term": term}
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.post(
                 f"/api/v4/teams/{team_id}/channels/search", json=search_data
             )
-            if response.status_code != 201: # Note: API spec says 201, but it's a search...
+            if response.status_code != 200:
                 await handle_api_error(response)
             return response.json()
         except httpx.RequestError as e:
@@ -427,7 +529,7 @@ async def search_posts(
         - posts (Dict[str, Post]): A dictionary of post objects.
         - matches (Dict[str, List[str]]): A mapping of post IDs to matched terms.
     """
-    config = get_service_config(context)
+    logger.info("Entering search_posts")
     search_data = {
         "terms": terms,
         "is_or_search": is_or_search,
@@ -436,7 +538,7 @@ async def search_posts(
         "page": page,
         "per_page": per_page,
     }
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.post(
                 f"/api/v4/teams/{team_id}/posts/search", json=search_data
@@ -482,7 +584,7 @@ async def get_posts_for_channel(
         - prev_post_id (str): The ID of the previous post.
         - has_next (bool): Whether there are more items after this page.
     """
-    config = get_service_config(context)
+    logger.info("Entering get_posts_for_channel")
     params = {
         "page": page,
         "per_page": per_page,
@@ -493,7 +595,7 @@ async def get_posts_for_channel(
     }
     # Filter out None values so they aren't sent as query params
     params = {k: v for k, v in params.items() if v is not None}
-    async with get_mattermost_client(config) as client:
+    async with get_mattermost_client() as client:
         try:
             response = await client.get(
                 f"/api/v4/channels/{channel_id}/posts", params=params
