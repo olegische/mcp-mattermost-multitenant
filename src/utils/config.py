@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -25,6 +26,11 @@ class ServiceConfig(BaseSettings):
     MATTERMOST_COOKIE: Optional[str] = None
     # The Mattermost CSRF token for authentication.
     MATTERMOST_CSRF_TOKEN: Optional[str] = None
+
+    @field_validator("MATTERMOST_BASE_URL")
+    def strip_trailing_slash(cls, v: str) -> str:
+        """Remove trailing slashes from the base URL."""
+        return v.rstrip("/")
 
     class Config:
         """Pydantic configuration settings."""

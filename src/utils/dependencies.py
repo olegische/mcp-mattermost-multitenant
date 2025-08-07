@@ -84,7 +84,7 @@ def get_service_config(context: Context) -> ServiceConfig:
     }
 
     if header_creds["base_url"]:
-        config.MATTERMOST_BASE_URL = header_creds["base_url"]
+        config.MATTERMOST_BASE_URL = header_creds["base_url"].rstrip("/")
     if header_creds["api_key"]:
         config.MATTERMOST_API_KEY = header_creds["api_key"]
     if header_creds["cookie"]:
