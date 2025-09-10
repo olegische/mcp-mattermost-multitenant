@@ -115,6 +115,8 @@ async def get_mattermost_client(
             headers["X-CSRF-Token"] = config.MATTERMOST_CSRF_TOKEN
 
     async with httpx.AsyncClient(
-        base_url=config.MATTERMOST_BASE_URL, headers=headers
+        base_url=config.MATTERMOST_BASE_URL, 
+        headers=headers,
+        verify=config.VERIFY_SSL
     ) as client:
         yield client

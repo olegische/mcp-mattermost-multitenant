@@ -26,6 +26,8 @@ class ServiceConfig(BaseSettings):
     MATTERMOST_COOKIE: Optional[str] = None
     # The Mattermost CSRF token for authentication.
     MATTERMOST_CSRF_TOKEN: Optional[str] = None
+    # Whether to verify SSL certificates in httpx client (True for production, False for development/testing)
+    VERIFY_SSL: bool = True
 
     @field_validator("MATTERMOST_BASE_URL")
     def strip_trailing_slash(cls, v: str) -> str:
